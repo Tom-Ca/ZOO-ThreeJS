@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgl - geometry - cube</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="style.css">
+	</head>
+	
+<body>
+	<div id="overlay">	
+		<button id="startButton">Play</button>
+	</div>
+	<div id="info">
+		<a target="_blank" rel="noopener">TP 4 Three.js</a> Cité grec <br />
+		by <a target="_blank" rel="noopener">Tom CAREGHI, Eric ZHUANG, Alexandre SAMSON, Lucas RAMIS</a>
+	</div>
+	<div id="container"></div>
+	<script src="js/libs/ammo.js"></script>
+
+	<script type="module">
+		import Stats from './jsm/libs/stats.module.js';
+		import { FirstPersonControls } from './jsm/controls/FirstPersonControls.js';
+		import * as THREE from '../build/three.module.js';
+		import { GUI } from './jsm/libs/dat.gui.module.js';
+		import { FBXLoader } from './jsm/loaders/FBXLoader.js';
+		import { GLTFLoader } from './jsm/loaders/GLTFLoader.js';
+
+		import { ColladaLoader } from './jsm/loaders/ColladaLoader.js';
+		import { Sky } from './jsm/objects/Sky.js';
+
+		var camera, scene, renderer,gui ,stats, controls;
+
+		var dist = 100;
+
+		var grass, grass2;
+		var spotLight;
+		var tree_position =-500;
+		var count=0;
+		var barierre = [];
+		var loadergltfD = [];
+		var loadergltfG = [];
+		var mixer1,mixer2,mixer3,mixer4, analyser1;
+		let sky, sun;
+		const clock = new THREE.Clock();
+
+		var controls = {};
+		var player = {
+			height: 270,
+			turnSpeed: .1,
+			speed: 28,
+			jumpHeight: 15,
+			gravity: 0.8,
+			velocity: 0,
+			playerJumps: false
+		};
+
+
+		const startButton = document.getElementById( 'startButton' );
+		startButton.addEventListener( 'click', function () {
+
+			Ammo().then( function () {
+
+				init();
+				animateDos();
+				buildGui();
+				loop();
+			} );
+
+		} );
+
+//camera
+            document.addEventListener('keydown', ({ keyCode }) => { controls[keyCode] = true });
+            document.addEventListener('keyup', ({ keyCode }) => { controls[keyCode] = false });
+
+
+            // Camera:Setup
+            camera.position.set(0, player.height, 200);
+            camera.lookAt(new THREE.Vector3(0, player.height, 0));
+			// ...
+            function control() {
+              // Controls:Engine
+              if(controls[90]){ // w
+                camera.position.x -= Math.sin(camera.rotation.y) * player.speed;
+                camera.position.z -= -Math.cos(camera.rotation.y) * player.speed;
+              }
+              if(controls[83]){ // s
+                camera.position.x += Math.sin(camera.rotation.y) * player.speed;
+                camera.position.z += -Math.cos(camera.rotation.y) * player.speed;
+              }
+              if(controls[81]){ // a
+                camera.position.x += Math.sin(camera.rotation.y + Math.PI / 2) * player.speed;
+                camera.position.z += -Math.cos(camera.rotation.y + Math.PI / 2) * player.speed;
+              }
+              if(controls[68]){ // d
+                camera.position.x += Math.sin(camera.rotation.y - Math.PI / 2) * player.speed;
+                camera.position.z += -Math.cos(camera.rotation.y - Math.PI / 2) * player.speed;
+              }
+              if(controls[37]){ // la
+                camera.rotation.y -= player.turnSpeed;
+              }
+              if(controls[39]){ // ra
+                camera.rotation.y += player.turnSpeed;
+              }
+              if(controls[32]) { // space
+                if(player.jumps) return false;
+                player.jumps = true;
+                player.velocity = -player.jumpHeight;
+              }
+			}
+			
+			function ixMovementUpdate() {
+              player.velocity += player.gravity;
+              camera.position.y -= player.velocity;
+
+              if(camera.position.y < player.height) {
+                camera.position.y = player.height;
+                player.jumps = false;
+              }
+            }
+
+            function update() {
+              control();
+              ixMovementUpdate();
+            }
+
+            function render() {
+              renderer.render(scene, camera);
+            }
+
+            function loop() {
+              requestAnimationFrame(loop);
+              update();
+              render();
+            }
+
+
+			//sun
+			function initSky() {
+
+					// Add Sky
+					sky = new Sky();
+					sky.scale.setScalar( 450000 );
+					scene.add( sky );
+
+					sun = new THREE.Vector3();
+
+					/// GUI
+
+					const effectController = {
+						turbidity: 10,
+						rayleigh: 3,
+						mieCoefficient: 0.005,
+						mieDirectionalG: 0.7,
+						inclination: 0.503, // elevation / inclination
+						azimuth: 0.25, // Facing front,
+						exposure: renderer.toneMappingExposure
+					};
+
+					function guiChanged() {
+
+						const uniforms = sky.material.uniforms;
+						uniforms[ "turbidity" ].value = effectController.turbidity;
+						uniforms[ "rayleigh" ].value = effectController.rayleigh;
+						uniforms[ "mieCoefficient" ].value = effectController.mieCoefficient;
+						uniforms[ "mieDirectionalG" ].value = effectController.mieDirectionalG;
+
+						const theta = Math.PI * ( effectController.inclination - 0.5 );
+						const phi = 2 * Math.PI * ( effectController.azimuth - 0.5 );
+
+						sun.x = Math.cos( phi );
+						sun.y = Math.sin( phi ) * Math.sin( theta );
+						sun.z = Math.sin( phi ) * Math.cos( theta );
+
+						uniforms[ "sunPosition" ].value.copy( sun );
+
+						renderer.toneMappingExposure = effectController.exposure;
+						renderer.render( scene, camera );
+
+					}
+
+					const gui  = new GUI();
+
+					gui.add( effectController, "turbidity", 0.0, 20.0, 0.1 ).onChange( guiChanged );
+					gui.add( effectController, "rayleigh", 0.0, 4, 0.001 ).onChange( guiChanged );
+					gui.add( effectController, "mieCoefficient", 0.0, 0.1, 0.001 ).onChange( guiChanged );
+					gui.add( effectController, "mieDirectionalG", 0.0, 1, 0.001 ).onChange( guiChanged );
+					gui.add( effectController, "inclination", 0, 1, 0.0001 ).onChange( guiChanged );
+					gui.add( effectController, "azimuth", 0, 1, 0.0001 ).onChange( guiChanged );
+					gui.add( effectController, "exposure", 0, 1, 0.0001 ).onChange( guiChanged );
+
+					guiChanged();
+
+			}
+
+
+			function init() {
+				
+				const overlay = document.getElementById( 'overlay' );
+				overlay.remove();
+				const container = document.createElement( 'div' );
+				document.body.appendChild( container );
+
+
+
+				camera = new THREE.PerspectiveCamera( 100, window.innerWidth / window.innerHeight, 1, 50000 );
+
+
+				scene = new THREE.Scene();
+				//Lumiere ambiente
+				var ambient = new THREE.AmbientLight( 0xffffff, 0.05 );
+				scene.add( ambient );
+
+				//spotlight de dehors
+				spotLight = new THREE.SpotLight( 0xed2626, 1 );
+				spotLight.position.set( 2000, 600, -10000 );
+				spotLight.angle = Math.PI / 4;
+				spotLight.penumbra = 0.05;
+				spotLight.decay = 1;
+				spotLight.distance = 20000;
+				spotLight.intensity = 2;
+
+				spotLight.castShadow = true;
+				spotLight.shadow.mapSize.width = 2048;
+				spotLight.shadow.mapSize.height = 2048;
+				spotLight.shadow.camera.near = 10;
+				spotLight.shadow.camera.far = 20000;
+				scene.add( spotLight );
+
+
+
+
+
+				stats = new Stats();
+				container.appendChild( stats.dom );
+
+
+
+
+				var listener = new THREE.AudioListener();
+				camera.add( listener );
+
+				var audioLoader = new THREE.AudioLoader();
+
+				var sound = new THREE.Audio( listener );
+				audioLoader.load( 'sounds/jurassic.mp3', function ( buffer ) {
+
+					sound.setBuffer( buffer );
+					sound.setLoop( true );
+					sound.setVolume( 0.9 );
+					sound.play();
+				} );
+
+
+				//Cloture devant
+				for (let i = 0; i <=33 ; i++) {
+					var texture = new THREE.TextureLoader().load( 'textures/wood.jpg' );
+					var geometry = new THREE.BoxBufferGeometry( 50, 1000, 10 );
+					var material = new THREE.MeshPhongMaterial( { map: texture } );
+					barierre[i] = new THREE.Mesh( geometry, material );
+					barierre[i].position.set( -1000+(dist*i), 0, 1000 );
+					barierre[i].receiveShadow = true;
+					barierre[i].castShadow = true;
+					scene.add( barierre[i] );
+				}	
+				for (let i = 0; i <=71 ; i++) {
+					var texture = new THREE.TextureLoader().load( 'textures/wood.jpg' );
+					var geometry = new THREE.BoxBufferGeometry( 50, 1000, 10 );
+					var material = new THREE.MeshPhongMaterial( { map: texture } );
+					barierre[i] = new THREE.Mesh( geometry, material );
+					barierre[i].position.set( -3150-(dist*i), 0, 1000 );
+					barierre[i].receiveShadow = true;
+					barierre[i].castShadow = true;
+					scene.add( barierre[i] );
+				}	
+				//Gauche
+				for (let i = 0; i <=78 ; i++) {
+					var texture = new THREE.TextureLoader().load( 'textures/wood.jpg' );
+					var geometry = new THREE.BoxBufferGeometry( 50, 1000, 10 );
+					var material = new THREE.MeshPhongMaterial( { map: texture } );
+					barierre[i] = new THREE.Mesh( geometry, material );
+					barierre[i].position.set( -10300, 0, 1000-(dist*i) );
+					barierre[i].rotation.y= Math.PI / 2;
+					barierre[i].receiveShadow = true;
+					barierre[i].castShadow = true;
+					scene.add( barierre[i] );
+				}
+				//Droite
+				for (let i = 0; i <=78 ; i++) {
+					var texture = new THREE.TextureLoader().load( 'textures/wood.jpg' );
+					var geometry = new THREE.BoxBufferGeometry( 50, 1000, 10 );
+					var material = new THREE.MeshPhongMaterial( { map: texture } );
+					barierre[i] = new THREE.Mesh( geometry, material );
+					barierre[i].position.set( 2350, 0, 1000-(dist*i) );
+					barierre[i].rotation.y= Math.PI / 2;
+					barierre[i].receiveShadow = true;
+					barierre[i].castShadow = true;
+					scene.add( barierre[i] );
+				}
+				//Back
+				for (let i = 0; i <=33 ; i++) {
+					var texture = new THREE.TextureLoader().load( 'textures/wood.jpg' );
+					var geometry = new THREE.BoxBufferGeometry( 50, 1000, 10 );
+					var material = new THREE.MeshPhongMaterial( { map: texture } );
+					barierre[i] = new THREE.Mesh( geometry, material );
+					barierre[i].position.set( -1000+(dist*i), 0, -6850 );
+					barierre[i].receiveShadow = true;
+					barierre[i].castShadow = true;
+					scene.add( barierre[i] );
+				}	
+				for (let i = 0; i <=71 ; i++) {
+					var texture = new THREE.TextureLoader().load( 'textures/wood.jpg' );
+					var geometry = new THREE.BoxBufferGeometry( 50, 1000, 10 );
+					var material = new THREE.MeshPhongMaterial( { map: texture } );
+					barierre[i] = new THREE.Mesh( geometry, material );
+					barierre[i].position.set( -3150-(dist*i), 0, -6850 );
+					barierre[i].receiveShadow = true;
+					barierre[i].castShadow = true;
+					scene.add( barierre[i] );
+				}
+			// licorn1
+				const loader1 = new FBXLoader();
+				loader1.load( 'models/animaux/licorn1.fbx', function ( object ) {
+					object.traverse( function ( child ) {
+
+						if ( child.isMesh ) {
+
+							child.castShadow = true;
+							child.receiveShadow = true;
+
+						}
+
+					} );
+
+					scene.add( object );
+
+				} );
+// licorn2
+				const loader2 = new FBXLoader();
+				loader2.load( 'models/animaux/licorn2.fbx', function ( object ) {
+					object.traverse( function ( child ) {
+
+						if ( child.isMesh ) {
+
+							child.castShadow = true;
+							child.receiveShadow = true;
+
+						}
+
+					} );
+
+					scene.add( object );
+
+				} );
+// licorn3
+				const loader3 = new FBXLoader();
+				loader3.load( 'models/animaux/licorn3.fbx', function ( object ) {
+					object.traverse( function ( child ) {
+
+						if ( child.isMesh ) {
+
+							child.castShadow = true;
+							child.receiveShadow = true;
+
+												}
+
+					} );
+
+					scene.add( object );
+
+				} );
+// licorn4
+				const loader4 = new FBXLoader();
+				loader4.load( 'models/animaux/licorn4.fbx', function ( object ) {
+					object.traverse( function ( child ) {
+
+						if ( child.isMesh ) {
+
+							child.castShadow = true;
+							child.receiveShadow = true;
+
+						}
+
+					} );
+
+					scene.add( object );
+
+				} );
+// enclos licorn
+				const loader5 = new FBXLoader();
+				loader5.load( 'models/animaux/enclos_licorn2.fbx', function ( object ) {
+					object.traverse( function ( child ) {
+
+						if ( child.isMesh ) {
+
+							child.castShadow = true;
+							child.receiveShadow = true;
+
+						}
+
+					} );
+
+					scene.add( object );
+
+				} );
+// enclos dragon
+				const loader6 = new FBXLoader();
+				loader6.load( 'models/animaux/enclos_dragon.fbx', function ( object ) {
+					object.traverse( function ( child ) {
+
+						if ( child.isMesh ) {
+
+							child.castShadow = true;
+							child.receiveShadow = true;
+
+						}
+
+					} );
+
+					scene.add( object );
+
+				} );
+//dragon
+				const loader7 = new FBXLoader();
+				loader7.load( 'models/animaux/dragon.fbx', function ( object ) {
+
+					mixer1 = new THREE.AnimationMixer( object );
+
+		   		const action = mixer1.clipAction( object.animations[ 1 ] );
+					action.play();
+
+					object.traverse( function ( child ) {
+
+						if ( child.isMesh ) {
+
+							child.castShadow = true;
+							child.receiveShadow = true;
+
+						}
+
+					} );
+
+					scene.add( object );
+				} );
+
+// enclos chevaux
+				const loader8 = new FBXLoader();
+				loader8.load( 'models/animaux/enclos_chevaux.fbx', function ( object ) {
+					object.traverse( function ( child ) {
+
+						if ( child.isMesh ) {
+
+							child.castShadow = true;
+							child.receiveShadow = true;
+
+						}
+
+					} );
+
+					scene.add( object );
+
+				} );
+
+//loud_speaker1
+				const loader9 = new FBXLoader();
+				loader9.load( 'models/animaux/loud_speaker1.fbx', function ( object ) {
+					object.traverse( function ( child ) {
+
+						if ( child.isMesh ) {
+
+							child.castShadow = true;
+							child.receiveShadow = true;
+
+						}
+
+					} );
+
+					scene.add( object );
+				} );
+
+				var geometry = new THREE.BoxBufferGeometry( 1, 1, 1 );
+				var material = new THREE.MeshPhongMaterial( {  } );
+				var mesh1 = new THREE.Mesh( geometry, material );
+				mesh1.position.set( 1.582, 3.526, 5.168 );
+				scene.add( mesh1 );
+
+
+//loud_speaker2
+				const loader10 = new FBXLoader();
+				loader10.load( 'models/animaux/loud_speaker2.fbx', function ( object ) {
+					object.traverse( function ( child ) {
+
+						if ( child.isMesh ) {
+
+							child.castShadow = true;
+							child.receiveShadow = true;
+
+						}
+
+					} );
+
+					scene.add( object );
+				} );
+
+				var geometry = new THREE.BoxBufferGeometry( 1, 1, 1 );
+				var material = new THREE.MeshPhongMaterial( {  } );
+				var mesh2 = new THREE.Mesh( geometry, material );
+				mesh2.position.set( 1.582, 26.204, 5.168 );
+				scene.add( mesh2 );
+
+//loud_speaker3
+
+				const loader11 = new FBXLoader();
+				loader11.load( 'models/animaux/loud_speaker3.fbx', function ( object ) {
+					object.traverse( function ( child ) {
+
+						if ( child.isMesh ) {
+
+							child.castShadow = true;
+							child.receiveShadow = true;
+
+						}
+
+					} );
+
+					scene.add( object );
+				} );
+
+				const loader12 = new FBXLoader();
+				loader12.load( 'models/animaux/bebe_elephant.fbx', function ( object ) {
+					object.traverse( function ( child ) {
+
+						if ( child.isMesh ) {
+
+							child.castShadow = true;
+							child.receiveShadow = true;
+
+						}
+
+					} );
+					object.position.y = -180;
+					scene.add( object );
+				} );
+				const loader13 = new FBXLoader();
+				loader13.load( 'models/animaux/bebe_elephant2.fbx', function ( object ) {
+					object.traverse( function ( child ) {
+
+						if ( child.isMesh ) {
+
+							child.castShadow = true;
+							child.receiveShadow = true;
+
+						}
+
+					} );
+					object.position.y = -250;
+					scene.add( object );
+				} );
+				const loader14 = new FBXLoader();
+				loader14.load( 'models/animaux/maman_elephant.fbx', function ( object ) {
+					object.traverse( function ( child ) {
+
+						if ( child.isMesh ) {
+
+							child.castShadow = true;
+							child.receiveShadow = true;
+
+						}
+
+					} );
+
+					scene.add( object );
+				} );
+				
+				//ARBRE DROITE
+				for(let i = 0; i <= 11; i++){
+					loadergltfD[i] = new GLTFLoader();
+					
+					// Load a glTF resource
+					loadergltfD[i].load(
+						// resource URL
+						'models/tree.gltf',
+						// called when the resource is loaded
+						function ( gltf ) {
+
+							gltf.scene.position.set(-1000,-150,-150+(tree_position*i));
+							gltf.scene.scale.set(4,4,4);
+
+							scene.add( gltf.scene );
+						},
+
+					);
+				}
+
+				//ARBRE GAUCHE
+				for(let i = 0; i <= 13; i++){
+					loadergltfG[i] = new GLTFLoader();
+					
+					// Load a glTF resource
+					loadergltfG[i].load(
+						// resource URL
+						'models/tree.gltf',
+						// called when the resource is loaded
+						function ( gltf ) {
+
+							gltf.scene.position.set(-3100,-150,-150+(tree_position*i));
+							gltf.scene.scale.set(4,4,4);
+
+							scene.add( gltf.scene );
+						},
+
+					);
+				}
+
+				var geometry = new THREE.BoxBufferGeometry( 1, 1, 1 );
+				var material = new THREE.MeshPhongMaterial( {  } );
+				var mesh3 = new THREE.Mesh( geometry, material );
+				mesh3.position.set( -47.302, 3.169, 5.168 );
+				scene.add( mesh3 );
+
+				// sound loud_speaker
+				var sound2 = new THREE.PositionalAudio( listener );
+				audioLoader.load( 'sounds/Voix 001.m4a', function ( buffer ) {
+
+					sound2.setBuffer( buffer );
+					sound2.setLoop( loop );
+					sound2.setVolume( 1 );
+					sound2.setRefDistance( 20 );
+					sound2.play();
+
+				} );
+				mesh1.add( sound2 );
+				mesh2.add( sound2 );
+				mesh3.add( sound2 );
+
+
+				// l'HERBE
+				const loader = new THREE.TextureLoader();
+				const groundTexture = loader.load( 'textures/terrain/grasslight-big.jpg' );
+				groundTexture.wrapS = THREE.RepeatWrapping;
+				groundTexture.wrapT = THREE.RepeatWrapping;
+				groundTexture.repeat.set( 25, 25 );
+				groundTexture.anisotropy = 16;
+				groundTexture.encoding = THREE.sRGBEncoding;
+
+				const groundMaterial = new THREE.MeshLambertMaterial( { map: groundTexture } );
+
+				let grass = new THREE.Mesh( new THREE.PlaneBufferGeometry( 10000, 30000 ), groundMaterial );
+				grass.position.y = 0;
+				grass.position.x = 3800;
+				grass.rotation.x = - Math.PI / 2;
+				grass.receiveShadow = true;
+				scene.add( grass );
+
+				let grass2 = new THREE.Mesh( new THREE.PlaneBufferGeometry( 10000, 30000 ), groundMaterial );
+				grass2.position.y = 0;
+				grass2.position.x = -8000;
+				grass2.rotation.x = - Math.PI / 2;
+				grass2.receiveShadow = true;
+				scene.add( grass2 );
+
+				var texture = loader.load( 'textures/ground.jpg' );
+				texture.wrapS = THREE.RepeatWrapping;
+				texture.wrapT = THREE.RepeatWrapping;
+				texture.repeat.set( 25, 25 );
+				texture.anisotropy = 16;
+				texture.encoding = THREE.sRGBEncoding;
+
+				var geometry = new THREE.PlaneBufferGeometry( 1800, 30000 )
+				var material = new THREE.MeshPhongMaterial( { map: texture } );
+				var ground = new THREE.Mesh( geometry, material );
+				ground.position.y = 0;
+				ground.position.x = -2100;
+				ground.rotation.x = - Math.PI / 2;
+				ground.receiveShadow= true;
+				scene.add( ground );
+
+
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				document.body.appendChild( renderer.domElement );
+				renderer.shadowMap.enabled = true;
+				renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+				container.appendChild( renderer.domElement );
+
+
+				renderer.gammaInput = true;
+				renderer.gammaOutput = true;
+				initSky();
+
+				window.addEventListener( 'resize', onWindowResize, false );
+
+			}
+
+			function animateDos() {
+
+			requestAnimationFrame( animateDos );
+			var delta = clock.getDelta();
+			if ( mixer1 ) mixer1.update( delta );
+			if ( mixer2 ) mixer2.update( delta );
+			if ( mixer3 ) mixer3.update( delta );
+			stats.update();
+
+			renderer.render( scene, camera );
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function buildGui() {
+
+				gui = new GUI();
+
+				const params = {
+					'light color': spotLight.color.getHex(),
+					/*'light color 2': spotLight2.color.getHex(),*/
+
+					intensity: spotLight.intensity,
+					distance: spotLight.distance,
+					angle: spotLight.angle
+				};
+
+				gui.addColor( params, 'light color' ).onChange( function ( val ) {
+
+					spotLight.color.setHex( val );
+
+				} );
+
+				gui.add( params, 'intensity', 0, 2 ).onChange( function ( val ) {
+
+					spotLight.intensity = val;
+
+				} );
+
+				gui.add( params, 'distance', 50, 20000 ).onChange( function ( val ) {
+
+					spotLight.distance = val;
+
+				} );
+
+				gui.add( params, 'angle', 0, Math.PI / 3 ).onChange( function ( val ) {
+
+					spotLight.angle = val;
+
+				} );
+
+
+			}
+
+
+		</script>
+
+</body>
+
+</html>
